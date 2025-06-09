@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,9 @@ import { CreditCard, Banknote, Smartphone, CheckCircle, Clock, AlertCircle } fro
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+
+type PaymentMethod = "cod" | "bank_transfer" | "credit_card" | "digital_wallet";
+type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 
 const PaymentSystem = () => {
   const { user } = useAuth();
@@ -60,7 +62,7 @@ const PaymentSystem = () => {
     }
   };
 
-  const handlePayment = async (orderId: string, paymentMethod: string) => {
+  const handlePayment = async (orderId: string, paymentMethod: PaymentMethod) => {
     setLoading(true);
     try {
       const order = unpaidOrders.find(o => o.id === orderId);
@@ -73,7 +75,7 @@ const PaymentSystem = () => {
           order_id: orderId,
           amount: order.total_amount,
           payment_method: paymentMethod,
-          payment_status: paymentMethod === 'cod' ? 'pending' : 'paid',
+          payment_status: (paymentMethod === 'cod' ? 'pending' : 'paid') as PaymentStatus,
           transaction_id: `TXN-${Date.now()}`,
           payment_date: paymentMethod === 'cod' ? null : new Date().toISOString()
         })
@@ -87,7 +89,7 @@ const PaymentSystem = () => {
         .from("orders")
         .update({
           payment_method: paymentMethod,
-          payment_status: paymentMethod === 'cod' ? 'pending' : 'paid'
+          payment_status: (paymentMethod === 'cod' ? 'pending' : 'paid') as PaymentStatus
         })
         .eq("id", orderId);
 
