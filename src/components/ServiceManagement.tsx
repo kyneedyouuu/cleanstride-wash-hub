@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,122 +9,221 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Edit, Trash2, ShirtIcon, Clock, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+
+interface Service {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  duration_days: number;
+  is_active: boolean;
+}
 
 const ServiceManagement = () => {
-  const [services, setServices] = useState([
-    {
-      id: 1,
-      name: "Basic Clean",
-      description: "Pembersihan dasar dengan sabun khusus sepatu",
-      price: 25000,
-      duration: "2-3 hari",
-      isActive: true
-    },
-    {
-      id: 2,
-      name: "Premium Clean",
-      description: "Pembersihan menyeluruh dengan treatment khusus",
-      price: 45000,
-      duration: "1-2 hari",
-      isActive: true
-    },
-    {
-      id: 3,
-      name: "Deep Clean",
-      description: "Pembersihan mendalam untuk sepatu sangat kotor",
-      price: 65000,
-      duration: "3-4 hari",
-      isActive: true
-    },
-    {
-      id: 4,
-      name: "Express Clean",
-      description: "Layanan cepat untuk kebutuhan mendesak",
-      price: 55000,
-      duration: "1 hari",
-      isActive: true
-    }
-  ]);
-
-  const [editingService, setEditingService] = useState<any>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [editingService, setEditingService] = useState<Service | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { userProfile } = useAuth();
 
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
-    duration: ""
+    duration_days: ""
   });
+
+  const isAdmin = userProfile?.role === 'admin';
+
+  const fetchServices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("services")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setServices(data || []);
+    } catch (error) {
+      console.error("Error fetching services:", error);
+      toast({
+        title: "Error",
+        description: "Gagal memuat data layanan",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
 
   const resetForm = () => {
     setFormData({
       name: "",
       description: "",
       price: "",
-      duration: ""
+      duration_days: ""
     });
     setEditingService(null);
   };
 
-  const handleEdit = (service: any) => {
+  const handleEdit = (service: Service) => {
+    if (!isAdmin) {
+      toast({
+        title: "Akses Ditolak",
+        description: "Hanya admin yang dapat mengedit layanan",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setEditingService(service);
     setFormData({
       name: service.name,
-      description: service.description,
+      description: service.description || "",
       price: service.price.toString(),
-      duration: service.duration
+      duration_days: service.duration_days.toString()
     });
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = () => {
-    if (editingService) {
-      // Update existing service
-      setServices(services.map(service => 
-        service.id === editingService.id 
-          ? { ...service, ...formData, price: parseInt(formData.price) }
-          : service
-      ));
+  const handleSubmit = async () => {
+    if (!isAdmin) {
       toast({
-        title: "Layanan Diperbarui",
-        description: `${formData.name} berhasil diperbarui.`,
+        title: "Akses Ditolak",
+        description: "Hanya admin yang dapat mengelola layanan",
+        variant: "destructive"
       });
-    } else {
-      // Add new service
-      const newService = {
-        id: Date.now(),
-        ...formData,
-        price: parseInt(formData.price),
-        isActive: true
+      return;
+    }
+
+    try {
+      const serviceData = {
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        duration_days: parseInt(formData.duration_days)
       };
-      setServices([...services, newService]);
+
+      if (editingService) {
+        // Update existing service
+        const { error } = await supabase
+          .from("services")
+          .update(serviceData)
+          .eq("id", editingService.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Layanan Diperbarui",
+          description: `${formData.name} berhasil diperbarui.`,
+        });
+      } else {
+        // Add new service
+        const { error } = await supabase
+          .from("services")
+          .insert([serviceData]);
+
+        if (error) throw error;
+
+        toast({
+          title: "Layanan Ditambahkan",
+          description: `${formData.name} berhasil ditambahkan.`,
+        });
+      }
+      
+      setIsDialogOpen(false);
+      resetForm();
+      fetchServices();
+    } catch (error) {
+      console.error("Error saving service:", error);
       toast({
-        title: "Layanan Ditambahkan",
-        description: `${formData.name} berhasil ditambahkan.`,
+        title: "Error",
+        description: "Gagal menyimpan layanan",
+        variant: "destructive"
       });
     }
-    
-    setIsDialogOpen(false);
-    resetForm();
   };
 
-  const handleDelete = (id: number) => {
-    setServices(services.filter(service => service.id !== id));
-    toast({
-      title: "Layanan Dihapus",
-      description: "Layanan berhasil dihapus dari sistem.",
-      variant: "destructive"
-    });
+  const handleDelete = async (id: string) => {
+    if (!isAdmin) {
+      toast({
+        title: "Akses Ditolak",
+        description: "Hanya admin yang dapat menghapus layanan",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("services")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Layanan Dihapus",
+        description: "Layanan berhasil dihapus dari sistem.",
+        variant: "destructive"
+      });
+      fetchServices();
+    } catch (error) {
+      console.error("Error deleting service:", error);
+      toast({
+        title: "Error",
+        description: "Gagal menghapus layanan",
+        variant: "destructive"
+      });
+    }
   };
 
-  const toggleActive = (id: number) => {
-    setServices(services.map(service => 
-      service.id === id 
-        ? { ...service, isActive: !service.isActive }
-        : service
-    ));
+  const toggleActive = async (id: string, currentStatus: boolean) => {
+    if (!isAdmin) {
+      toast({
+        title: "Akses Ditolak",
+        description: "Hanya admin yang dapat mengubah status layanan",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("services")
+        .update({ is_active: !currentStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      fetchServices();
+    } catch (error) {
+      console.error("Error updating service status:", error);
+      toast({
+        title: "Error",
+        description: "Gagal mengubah status layanan",
+        variant: "destructive"
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <ShirtIcon className="h-8 w-8 animate-pulse mx-auto mb-2" />
+          <p>Memuat layanan...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -134,81 +233,84 @@ const ServiceManagement = () => {
           <p className="text-gray-600">Kelola layanan dan harga laundry sepatu</p>
         </div>
         
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Tambah Layanan
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingService ? "Edit Layanan" : "Tambah Layanan Baru"}
-              </DialogTitle>
-              <DialogDescription>
-                {editingService 
-                  ? "Perbarui informasi layanan yang sudah ada"
-                  : "Buat layanan baru untuk ditawarkan kepada customer"
-                }
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Nama Layanan</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Contoh: Premium Clean"
-                />
-              </div>
+        {isAdmin && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={resetForm} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Tambah Layanan
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingService ? "Edit Layanan" : "Tambah Layanan Baru"}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingService 
+                    ? "Perbarui informasi layanan yang sudah ada"
+                    : "Buat layanan baru untuk ditawarkan kepada customer"
+                  }
+                </DialogDescription>
+              </DialogHeader>
               
-              <div>
-                <Label htmlFor="description">Deskripsi</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Jelaskan detail layanan ini..."
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
-                  <Label htmlFor="price">Harga (Rp)</Label>
+                  <Label htmlFor="name">Nama Layanan</Label>
                   <Input
-                    id="price"
-                    type="number"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="45000"
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Contoh: Premium Clean"
                   />
                 </div>
                 
                 <div>
-                  <Label htmlFor="duration">Estimasi Waktu</Label>
-                  <Input
-                    id="duration"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                    placeholder="1-2 hari"
+                  <Label htmlFor="description">Deskripsi</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Jelaskan detail layanan ini..."
                   />
                 </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="price">Harga (Rp)</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      placeholder="45000"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="duration">Durasi (Hari)</Label>
+                    <Input
+                      id="duration"
+                      type="number"
+                      value={formData.duration_days}
+                      onChange={(e) => setFormData({ ...formData, duration_days: e.target.value })}
+                      placeholder="2"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Batal
-              </Button>
-              <Button onClick={handleSubmit}>
-                {editingService ? "Perbarui" : "Tambah"} Layanan
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Batal
+                </Button>
+                <Button onClick={handleSubmit}>
+                  {editingService ? "Perbarui" : "Tambah"} Layanan
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Service Statistics */}
@@ -228,7 +330,7 @@ const ServiceManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {services.filter(s => s.isActive).length}
+              {services.filter(s => s.is_active).length}
             </div>
           </CardContent>
         </Card>
@@ -239,7 +341,7 @@ const ServiceManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              Rp {Math.min(...services.map(s => s.price)).toLocaleString()}
+              {services.length > 0 ? `Rp ${Math.min(...services.map(s => s.price)).toLocaleString()}` : 'Rp 0'}
             </div>
           </CardContent>
         </Card>
@@ -250,7 +352,7 @@ const ServiceManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              Rp {Math.max(...services.map(s => s.price)).toLocaleString()}
+              {services.length > 0 ? `Rp ${Math.max(...services.map(s => s.price)).toLocaleString()}` : 'Rp 0'}
             </div>
           </CardContent>
         </Card>
@@ -259,7 +361,7 @@ const ServiceManagement = () => {
       {/* Services Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {services.map((service) => (
-          <Card key={service.id} className={`bg-white/70 backdrop-blur-sm ${service.isActive ? '' : 'opacity-60'}`}>
+          <Card key={service.id} className={`bg-white/70 backdrop-blur-sm ${service.is_active ? '' : 'opacity-60'}`}>
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div className="flex items-center space-x-2">
@@ -269,29 +371,31 @@ const ServiceManagement = () => {
                   <div>
                     <CardTitle className="text-lg">{service.name}</CardTitle>
                     <div className="flex items-center space-x-2 mt-1">
-                      <Badge variant={service.isActive ? "default" : "secondary"}>
-                        {service.isActive ? "Aktif" : "Nonaktif"}
+                      <Badge variant={service.is_active ? "default" : "secondary"}>
+                        {service.is_active ? "Aktif" : "Nonaktif"}
                       </Badge>
                     </div>
                   </div>
                 </div>
                 
-                <div className="flex space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleEdit(service)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(service.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </div>
+                {isAdmin && (
+                  <div className="flex space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(service)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(service.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardHeader>
             
@@ -312,19 +416,21 @@ const ServiceManagement = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Clock className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm">Estimasi</span>
+                    <span className="text-sm">Durasi</span>
                   </div>
-                  <span className="text-sm font-medium">{service.duration}</span>
+                  <span className="text-sm font-medium">{service.duration_days} hari</span>
                 </div>
               </div>
               
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => toggleActive(service.id)}
-              >
-                {service.isActive ? "Nonaktifkan" : "Aktifkan"} Layanan
-              </Button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => toggleActive(service.id, service.is_active)}
+                >
+                  {service.is_active ? "Nonaktifkan" : "Aktifkan"} Layanan
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
