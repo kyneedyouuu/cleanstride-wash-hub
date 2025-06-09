@@ -1,290 +1,279 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Package, TruckIcon, CheckCircle, Clock, MapPin } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { Progress } from "@/components/ui/progress";
+import { Search, Package, TruckIcon, Wrench, CheckCircle, Clock, MapPin, Phone } from "lucide-react";
 
 const OrderTracking = () => {
-  const { user } = useAuth();
-  const [orders, setOrders] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [searchOrderId, setSearchOrderId] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [trackingHistory, setTrackingHistory] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (user) {
-      fetchOrders();
+  const sampleOrders = [
+    {
+      id: "CLS-123456",
+      customerName: "Ahmad Rizki",
+      phone: "08123456789",
+      service: "Premium Clean",
+      status: "processing",
+      progress: 60,
+      estimatedCompletion: "2024-01-15",
+      timeline: [
+        { step: "Order Received", completed: true, time: "2024-01-12 10:30", description: "Pesanan diterima dan dikonfirmasi" },
+        { step: "Pickup", completed: true, time: "2024-01-12 14:15", description: "Sepatu berhasil dijemput dari alamat customer" },
+        { step: "Processing", completed: false, time: "2024-01-13 09:00", description: "Sepatu sedang dalam proses pencucian" },
+        { step: "Quality Control", completed: false, time: "", description: "Pengecekan kualitas hasil pencucian" },
+        { step: "Ready for Delivery", completed: false, time: "", description: "Siap untuk diantar ke customer" },
+        { step: "Delivered", completed: false, time: "", description: "Sepatu telah sampai ke customer" }
+      ],
+      shoeDetails: {
+        type: "Sneakers Nike Air Force 1",
+        quantity: 1,
+        condition: "Kotor ringan, noda di bagian sol",
+        photos: ["sepatu1.jpg", "sepatu2.jpg"]
+      },
+      address: "Jl. Sudirman No. 123, Jakarta Pusat",
+      notes: "Harap hati-hati dengan bagian logo Nike"
     }
-  }, [user]);
+  ];
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(`
-          *,
-          services(name, description),
-          profiles!orders_customer_id_fkey(full_name)
-        `)
-        .eq("customer_id", user?.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error("Error fetching orders:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchTrackingHistory = async (orderId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("order_tracking")
-        .select(`
-          *,
-          profiles(full_name)
-        `)
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setTrackingHistory(data || []);
-    } catch (error) {
-      console.error("Error fetching tracking history:", error);
-    }
-  };
-
-  const handleOrderSelect = (order: any) => {
-    setSelectedOrder(order);
-    fetchTrackingHistory(order.id);
-  };
-
-  const getStatusIcon = (status: string) => {
-    const iconMap: { [key: string]: any } = {
-      pending: Clock,
-      confirmed: CheckCircle,
-      pickup_scheduled: TruckIcon,
-      picked_up: Package,
-      in_process: Package,
-      quality_check: CheckCircle,
-      ready_for_delivery: Package,
-      out_for_delivery: TruckIcon,
-      delivered: CheckCircle,
-      cancelled: Clock
-    };
-    return iconMap[status] || Clock;
+  const handleSearch = () => {
+    const found = sampleOrders.find(order => order.id === searchOrderId.toUpperCase());
+    setSelectedOrder(found || null);
   };
 
   const getStatusColor = (status: string) => {
-    const colorMap: { [key: string]: string } = {
-      pending: "bg-yellow-100 text-yellow-800",
-      confirmed: "bg-blue-100 text-blue-800",
-      pickup_scheduled: "bg-purple-100 text-purple-800",
-      picked_up: "bg-indigo-100 text-indigo-800",
-      in_process: "bg-orange-100 text-orange-800",
-      quality_check: "bg-cyan-100 text-cyan-800",
-      ready_for_delivery: "bg-green-100 text-green-800",
-      out_for_delivery: "bg-blue-100 text-blue-800",
-      delivered: "bg-green-100 text-green-800",
-      cancelled: "bg-red-100 text-red-800"
+    const colors = {
+      pending: "bg-yellow-500",
+      pickup: "bg-blue-500",
+      processing: "bg-purple-500",
+      qc: "bg-orange-500",
+      ready: "bg-green-500",
+      delivery: "bg-teal-500",
+      completed: "bg-emerald-500"
     };
-    return colorMap[status] || "bg-gray-100 text-gray-800";
+    return colors[status as keyof typeof colors] || "bg-gray-500";
   };
 
-  const getStatusText = (status: string) => {
-    const textMap: { [key: string]: string } = {
-      pending: "Menunggu Konfirmasi",
-      confirmed: "Dikonfirmasi",
-      pickup_scheduled: "Dijadwalkan Pickup",
-      picked_up: "Sudah Dipickup",
-      in_process: "Sedang Diproses",
-      quality_check: "Quality Check",
-      ready_for_delivery: "Siap Dikirim",
-      out_for_delivery: "Dalam Pengiriman",
-      delivered: "Diterima",
-      cancelled: "Dibatalkan"
+  const getStatusIcon = (step: string) => {
+    const icons = {
+      "Order Received": Package,
+      "Pickup": TruckIcon,
+      "Processing": Wrench,
+      "Quality Control": CheckCircle,
+      "Ready for Delivery": Clock,
+      "Delivered": CheckCircle
     };
-    return textMap[status] || status;
+    return icons[step as keyof typeof icons] || Package;
   };
-
-  const filteredOrders = orders.filter(order =>
-    order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    order.services?.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Tracking Order</h2>
-        <p className="text-gray-600">Lacak status pesanan laundry sepatu Anda</p>
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Lacak Pesanan</h2>
+        <p className="text-gray-600">Masukkan nomor order untuk melihat status terkini</p>
       </div>
 
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+      {/* Search Order */}
+      <Card className="bg-white/70 backdrop-blur-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Search className="h-5 w-5 mr-2" />
+            Cari Pesanan
+          </CardTitle>
+          <CardDescription>Masukkan nomor order (contoh: CLS-123456)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex space-x-4">
             <Input
-              placeholder="Cari berdasarkan nomor order atau nama layanan..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              placeholder="Masukkan nomor order..."
+              value={searchOrderId}
+              onChange={(e) => setSearchOrderId(e.target.value)}
+              className="flex-1"
             />
+            <Button onClick={handleSearch} className="bg-blue-600 hover:bg-blue-700">
+              <Search className="h-4 w-4 mr-2" />
+              Cari
+            </Button>
           </div>
+          {searchOrderId && !selectedOrder && (
+            <p className="text-red-500 text-sm mt-2">Order tidak ditemukan. Pastikan nomor order benar.</p>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Orders List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Daftar Order</CardTitle>
-            <CardDescription>Klik untuk melihat detail tracking</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-4">Loading...</div>
-            ) : filteredOrders.length === 0 ? (
-              <div className="text-center py-8">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="font-medium text-gray-900 mb-2">Belum ada order</h3>
-                <p className="text-gray-600">Buat order pertama Anda sekarang</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredOrders.map((order) => {
-                  const StatusIcon = getStatusIcon(order.status);
-                  return (
-                    <div
-                      key={order.id}
-                      onClick={() => handleOrderSelect(order)}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-gray-50 ${
-                        selectedOrder?.id === order.id ? 'ring-2 ring-blue-500' : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{order.order_number}</h4>
-                        <Badge className={getStatusColor(order.status)}>
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {getStatusText(order.status)}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600">{order.services?.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(order.created_at).toLocaleDateString('id-ID', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </p>
-                      <p className="text-sm font-medium text-green-600 mt-1">
-                        Rp {order.total_amount?.toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Order Details & Tracking */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Detail Tracking</CardTitle>
-            <CardDescription>
-              {selectedOrder ? `Tracking untuk ${selectedOrder.order_number}` : 'Pilih order untuk melihat detail'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selectedOrder ? (
-              <div className="space-y-4">
-                {/* Order Info */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-medium mb-2">Informasi Order</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-gray-600">Layanan:</span>
-                      <p className="font-medium">{selectedOrder.services?.name}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Jenis Sepatu:</span>
-                      <p className="font-medium">{selectedOrder.shoe_type || '-'}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Total:</span>
-                      <p className="font-medium text-green-600">
-                        Rp {selectedOrder.total_amount?.toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Status Payment:</span>
-                      <p className="font-medium">
-                        {selectedOrder.payment_status === 'pending' ? 'Pending' : 
-                         selectedOrder.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
-                      </p>
+      {/* Order Details */}
+      {selectedOrder && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Order Info */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Basic Info */}
+            <Card className="bg-white/70 backdrop-blur-sm">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-xl">Order {selectedOrder.id}</CardTitle>
+                    <CardDescription className="flex items-center mt-2">
+                      <MapPin className="h-4 w-4 mr-1" />
+                      {selectedOrder.address}
+                    </CardDescription>
+                  </div>
+                  <Badge className={`${getStatusColor(selectedOrder.status)} text-white`}>
+                    {selectedOrder.status.toUpperCase()}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Customer</p>
+                    <p className="font-medium">{selectedOrder.customerName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Telepon</p>
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                      <p className="font-medium">{selectedOrder.phone}</p>
                     </div>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Layanan</p>
+                    <p className="font-medium">{selectedOrder.service}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Estimasi Selesai</p>
+                    <p className="font-medium">{selectedOrder.estimatedCompletion}</p>
+                  </div>
                 </div>
+                
+                {/* Progress Bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Progress</span>
+                    <span className="text-sm font-medium">{selectedOrder.progress}%</span>
+                  </div>
+                  <Progress value={selectedOrder.progress} className="h-2" />
+                </div>
+              </CardContent>
+            </Card>
 
-                {/* Tracking Timeline */}
-                <div>
-                  <h4 className="font-medium mb-3">Timeline Tracking</h4>
-                  <div className="space-y-3">
-                    {trackingHistory.map((track, index) => {
-                      const StatusIcon = getStatusIcon(track.status);
-                      return (
-                        <div key={track.id} className="flex items-start space-x-3">
-                          <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                            index === 0 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                          }`}>
-                            <StatusIcon className="h-4 w-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm">{getStatusText(track.status)}</p>
-                            {track.notes && (
-                              <p className="text-sm text-gray-600">{track.notes}</p>
-                            )}
-                            <p className="text-xs text-gray-500">
-                              {new Date(track.created_at).toLocaleString('id-ID')}
-                            </p>
-                          </div>
+            {/* Timeline */}
+            <Card className="bg-white/70 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle>Timeline Pesanan</CardTitle>
+                <CardDescription>Riwayat proses pesanan Anda</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {selectedOrder.timeline.map((item: any, index: number) => {
+                    const Icon = getStatusIcon(item.step);
+                    return (
+                      <div key={index} className="flex items-start space-x-4">
+                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                          item.completed 
+                            ? 'bg-green-100 text-green-600' 
+                            : index === selectedOrder.timeline.findIndex((t: any) => !t.completed)
+                              ? 'bg-blue-100 text-blue-600'
+                              : 'bg-gray-100 text-gray-400'
+                        }`}>
+                          <Icon className="h-5 w-5" />
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Pickup/Delivery Address */}
-                {selectedOrder.pickup_address && (
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="flex items-start space-x-2">
-                      <MapPin className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <div>
-                        <h5 className="font-medium text-blue-900">Alamat Pickup/Delivery</h5>
-                        <p className="text-sm text-blue-700">{selectedOrder.pickup_address}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className={`text-sm font-medium ${
+                              item.completed ? 'text-green-600' : 'text-gray-900'
+                            }`}>
+                              {item.step}
+                            </p>
+                            {item.time && (
+                              <p className="text-xs text-gray-500">{item.time}</p>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Shoe Details */}
+            <Card className="bg-white/70 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle>Detail Sepatu</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-600">Jenis</p>
+                  <p className="font-medium">{selectedOrder.shoeDetails.type}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Jumlah</p>
+                  <p className="font-medium">{selectedOrder.shoeDetails.quantity} sepatu</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Kondisi Awal</p>
+                  <p className="font-medium text-sm">{selectedOrder.shoeDetails.condition}</p>
+                </div>
+                {selectedOrder.notes && (
+                  <div>
+                    <p className="text-sm text-gray-600">Catatan Khusus</p>
+                    <p className="font-medium text-sm">{selectedOrder.notes}</p>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">Pilih order dari daftar di sebelah kiri untuk melihat detail tracking</p>
-              </div>
-            )}
-          </CardContent>
+              </CardContent>
+            </Card>
+
+            {/* Contact Info */}
+            <Card className="bg-white/70 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle>Butuh Bantuan?</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" className="w-full justify-start">
+                  <Phone className="h-4 w-4 mr-2" />
+                  Hubungi Customer Service
+                </Button>
+                <Button variant="outline" className="w-full justify-start">
+                  <TruckIcon className="h-4 w-4 mr-2" />
+                  Hubungi Kurir
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Quick Actions */}
+            <Card className="bg-white/70 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle>Aksi Cepat</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                  Pesan Lagi
+                </Button>
+                <Button variant="outline" className="w-full">
+                  Download Invoice
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Sample Orders for Demo */}
+      {!selectedOrder && (
+        <Card className="bg-white/70 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle>Demo: Coba Order Berikut</CardTitle>
+            <CardDescription>Untuk demo, coba masukkan nomor order: CLS-123456</CardDescription>
+          </CardHeader>
         </Card>
-      </div>
+      )}
     </div>
   );
 };

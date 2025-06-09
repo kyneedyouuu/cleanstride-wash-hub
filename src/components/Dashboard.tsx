@@ -1,181 +1,252 @@
 
-import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShirtIcon, Package, TruckIcon, CheckCircle, Clock, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  ShirtIcon, 
+  TruckIcon, 
+  Users, 
+  DollarSign, 
+  Clock, 
+  CheckCircle, 
+  AlertCircle,
+  Package,
+  UserCheck,
+  Wrench
+} from "lucide-react";
 
 const Dashboard = () => {
-  const { user, userProfile } = useAuth();
-  const [stats, setStats] = useState({
-    totalOrders: 0,
-    pendingOrders: 0,
-    inProcessOrders: 0,
-    completedOrders: 0
-  });
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (user) {
-      fetchDashboardData();
-    }
-  }, [user]);
-
-  const fetchDashboardData = async () => {
-    try {
-      const { data: orders, error } = await supabase
-        .from("orders")
-        .select("*, services(name)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-
-      setRecentOrders(orders || []);
-      
-      // Calculate stats
-      const total = orders?.length || 0;
-      const pending = orders?.filter(order => order.status === 'pending').length || 0;
-      const inProcess = orders?.filter(order => ['confirmed', 'pickup_scheduled', 'picked_up', 'in_process'].includes(order.status)).length || 0;
-      const completed = orders?.filter(order => order.status === 'delivered').length || 0;
-
-      setStats({
-        totalOrders: total,
-        pendingOrders: pending,
-        inProcessOrders: inProcess,
-        completedOrders: completed
-      });
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const recentOrders = [
+    { id: "ORD-001", customer: "Ahmad Rizki", service: "Premium Clean", status: "processing", amount: "Rp 45,000" },
+    { id: "ORD-002", customer: "Siti Nurhaliza", service: "Basic Clean", status: "pickup", amount: "Rp 25,000" },
+    { id: "ORD-003", customer: "Budi Santoso", service: "Deep Clean", status: "completed", amount: "Rp 65,000" },
+    { id: "ORD-004", customer: "Rina Melati", service: "Express Clean", status: "delivery", amount: "Rp 55,000" },
+  ];
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      pending: { variant: "secondary" as const, icon: Clock, text: "Pending" },
-      confirmed: { variant: "default" as const, icon: CheckCircle, text: "Confirmed" },
-      pickup_scheduled: { variant: "default" as const, icon: TruckIcon, text: "Pickup Scheduled" },
-      picked_up: { variant: "default" as const, icon: Package, text: "Picked Up" },
-      in_process: { variant: "default" as const, icon: ShirtIcon, text: "In Process" },
-      delivered: { variant: "default" as const, icon: CheckCircle, text: "Delivered" },
-      cancelled: { variant: "destructive" as const, icon: AlertCircle, text: "Cancelled" }
+      pickup: { variant: "secondary" as const, label: "Pickup" },
+      processing: { variant: "default" as const, label: "Proses" },
+      delivery: { variant: "outline" as const, label: "Delivery" },
+      completed: { variant: "default" as const, label: "Selesai" }
     };
-
-    const config = statusMap[status as keyof typeof statusMap] || statusMap.pending;
-    const IconComponent = config.icon;
-
-    return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
-        <IconComponent className="h-3 w-3" />
-        {config.text}
-      </Badge>
-    );
+    
+    const statusInfo = statusMap[status as keyof typeof statusMap] || { variant: "secondary" as const, label: status };
+    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="text-center">
-          <ShirtIcon className="h-8 w-8 animate-pulse mx-auto mb-2" />
-          <p>Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Dashboard</h2>
-        <p className="text-gray-600">Selamat datang kembali, {userProfile?.full_name || user?.email}</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
+          <p className="text-gray-600">Overview aktivitas bisnis laundry sepatu Anda</p>
+        </div>
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Package className="h-4 w-4 mr-2" />
+          Order Baru
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Orders</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalOrders}</div>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 bg-white/50">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="admin">Admin</TabsTrigger>
+          <TabsTrigger value="kurir">Kurir</TabsTrigger>
+          <TabsTrigger value="workshop">Workshop</TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.pendingOrders}</div>
-          </CardContent>
-        </Card>
+        <TabsContent value="overview" className="space-y-6">
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Orders Hari Ini</CardTitle>
+                <ShirtIcon className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">23</div>
+                <p className="text-xs text-blue-100">+12% dari kemarin</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">In Process</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.inProcessOrders}</div>
-          </CardContent>
-        </Card>
+            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pendapatan Hari Ini</CardTitle>
+                <DollarSign className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Rp 1,245,000</div>
+                <p className="text-xs text-green-100">+8% dari kemarin</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Completed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.completedOrders}</div>
-          </CardContent>
-        </Card>
-      </div>
+            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Orders Dalam Proses</CardTitle>
+                <Clock className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">12</div>
+                <p className="text-xs text-orange-100">2 urgent priority</p>
+              </CardContent>
+            </Card>
 
-      {/* Recent Orders */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Orders</CardTitle>
-          <CardDescription>Your latest laundry orders</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentOrders.length === 0 ? (
-            <div className="text-center py-8">
-              <ShirtIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
-              <p className="text-gray-600 mb-4">Start by creating your first order</p>
-              <Button>Create Order</Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <ShirtIcon className="h-5 w-5 text-blue-600" />
+            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Customer Aktif</CardTitle>
+                <Users className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">156</div>
+                <p className="text-xs text-purple-100">+5 customer baru</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Orders */}
+          <Card className="bg-white/70 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Package className="h-5 w-5 mr-2" />
+                Orders Terbaru
+              </CardTitle>
+              <CardDescription>Daftar pesanan yang masuk hari ini</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {recentOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="bg-blue-100 p-2 rounded-lg">
+                        <ShirtIcon className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{order.id}</p>
+                        <p className="text-sm text-gray-600">{order.customer}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{order.order_number}</p>
-                      <p className="text-sm text-gray-600">{order.services?.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(order.created_at).toLocaleDateString('id-ID')}
-                      </p>
+                    <div className="text-center">
+                      <p className="font-medium">{order.service}</p>
+                      <p className="text-sm text-gray-600">{order.amount}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {getStatusBadge(order.status)}
+                      <Button variant="ghost" size="sm">Detail</Button>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="text-right">
-                      <p className="font-medium">Rp {order.total_amount?.toLocaleString('id-ID')}</p>
-                    </div>
-                    {getStatusBadge(order.status)}
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="admin" className="space-y-6">
+          <Card className="bg-white/70 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <UserCheck className="h-5 w-5 mr-2" />
+                Panel Admin
+              </CardTitle>
+              <CardDescription>Kelola sistem, layanan, dan laporan</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button variant="outline" className="h-20 flex flex-col">
+                  <Users className="h-6 w-6 mb-2" />
+                  Kelola User
+                </Button>
+                <Button variant="outline" className="h-20 flex flex-col">
+                  <ShirtIcon className="h-6 w-6 mb-2" />
+                  Kelola Layanan
+                </Button>
+                <Button variant="outline" className="h-20 flex flex-col">
+                  <DollarSign className="h-6 w-6 mb-2" />
+                  Laporan Keuangan
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="kurir" className="space-y-6">
+          <Card className="bg-white/70 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <TruckIcon className="h-5 w-5 mr-2" />
+                Panel Kurir
+              </CardTitle>
+              <CardDescription>Kelola pickup dan delivery</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Pickup Hari Ini</h4>
+                    <Badge variant="secondary">5 lokasi</Badge>
                   </div>
+                  <p className="text-sm text-gray-600">Jemput sepatu dari customer</p>
+                  <Button className="w-full mt-3" variant="outline">
+                    Lihat Rute Pickup
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Delivery Hari Ini</h4>
+                    <Badge variant="secondary">8 lokasi</Badge>
+                  </div>
+                  <p className="text-sm text-gray-600">Antar sepatu ke customer</p>
+                  <Button className="w-full mt-3" variant="outline">
+                    Lihat Rute Delivery
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="workshop" className="space-y-6">
+          <Card className="bg-white/70 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Wrench className="h-5 w-5 mr-2" />
+                Panel Workshop
+              </CardTitle>
+              <CardDescription>Kelola proses pencucian dan quality control</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Antrian Cuci</h4>
+                    <Badge>12 sepatu</Badge>
+                  </div>
+                  <p className="text-sm text-gray-600">Menunggu proses pencucian</p>
+                </div>
+                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Dalam Proses</h4>
+                    <Badge variant="secondary">8 sepatu</Badge>
+                  </div>
+                  <p className="text-sm text-gray-600">Sedang dicuci</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">Quality Control</h4>
+                    <Badge variant="outline">5 sepatu</Badge>
+                  </div>
+                  <p className="text-sm text-gray-600">Pengecekan kualitas</p>
+                </div>
+              </div>
+              <Button className="w-full">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Update Status Pencucian
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

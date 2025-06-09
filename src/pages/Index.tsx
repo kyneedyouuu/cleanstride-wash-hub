@@ -3,9 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShirtIcon, Users, TruckIcon, ClipboardCheck, CreditCard, BarChart3, Bell, Shield, LogOut } from "lucide-react";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import AuthPage from "@/components/AuthPage";
+import { ShirtIcon, Users, TruckIcon, ClipboardCheck, CreditCard, BarChart3, Bell, Shield } from "lucide-react";
 import Dashboard from "@/components/Dashboard";
 import OrderForm from "@/components/OrderForm";
 import ServiceManagement from "@/components/ServiceManagement";
@@ -13,9 +11,8 @@ import OrderTracking from "@/components/OrderTracking";
 import PaymentSystem from "@/components/PaymentSystem";
 import ReportSystem from "@/components/ReportSystem";
 
-const IndexContent = () => {
+const Index = () => {
   const [currentTab, setCurrentTab] = useState("overview");
-  const { user, loading, userProfile, logout } = useAuth();
 
   const features = [
     {
@@ -50,23 +47,6 @@ const IndexContent = () => {
     }
   ];
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-blue-600 p-3 rounded-lg inline-block mb-4">
-            <ShirtIcon className="h-8 w-8 text-white animate-pulse" />
-          </div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthPage onAuthSuccess={() => {}} />;
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">
       {/* Header */}
@@ -83,17 +63,11 @@ const IndexContent = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-600">
-                Halo, {userProfile?.full_name || user.email}
-              </div>
               <Button variant="ghost" size="sm">
                 <Bell className="h-4 w-4 mr-2" />
                 Notifikasi
               </Button>
-              <Button variant="ghost" size="sm" onClick={logout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
+              <Button size="sm">Login</Button>
             </div>
           </div>
         </div>
@@ -248,14 +222,6 @@ const IndexContent = () => {
         </div>
       </footer>
     </div>
-  );
-};
-
-const Index = () => {
-  return (
-    <AuthProvider>
-      <IndexContent />
-    </AuthProvider>
   );
 };
 
