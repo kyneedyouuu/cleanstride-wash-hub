@@ -1,350 +1,331 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  CreditCard, 
-  Banknote, 
-  Smartphone, 
-  Building, 
-  CheckCircle, 
-  Clock, 
-  AlertCircle,
-  DollarSign,
-  TrendingUp
-} from "lucide-react";
+import { CreditCard, Banknote, Smartphone, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 const PaymentSystem = () => {
-  const [selectedPayment, setSelectedPayment] = useState("");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [unpaidOrders, setUnpaidOrders] = useState<any[]>([]);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const paymentMethods = [
-    {
-      id: "cod",
-      name: "Cash on Delivery (COD)",
-      description: "Bayar tunai saat sepatu diantar",
-      icon: Banknote,
-      fee: 0,
-      available: true
-    },
-    {
-      id: "transfer",
-      name: "Transfer Bank",
-      description: "Transfer ke rekening CleanStride",
-      icon: Building,
-      fee: 0,
-      available: true
-    },
-    {
-      id: "ewallet",
-      name: "E-Wallet",
-      description: "GoPay, OVO, DANA, LinkAja",
-      icon: Smartphone,
-      fee: 2500,
-      available: true
-    },
-    {
-      id: "credit",
-      name: "Kartu Kredit/Debit",
-      description: "Visa, Mastercard, JCB",
-      icon: CreditCard,
-      fee: "2.9%",
-      available: false
+  useEffect(() => {
+    if (user) {
+      fetchUnpaidOrders();
+      fetchPaymentHistory();
     }
-  ];
+  }, [user]);
 
-  const recentTransactions = [
-    {
-      id: "TRX-001",
-      orderId: "CLS-123456",
-      customer: "Ahmad Rizki",
-      amount: 45000,
-      method: "Transfer Bank",
-      status: "completed",
-      date: "2024-01-12"
-    },
-    {
-      id: "TRX-002",
-      orderId: "CLS-123457",
-      customer: "Siti Nurhaliza",
-      amount: 25000,
-      method: "COD",
-      status: "pending",
-      date: "2024-01-12"
-    },
-    {
-      id: "TRX-003",
-      orderId: "CLS-123458",
-      customer: "Budi Santoso",
-      amount: 65000,
-      method: "GoPay",
-      status: "completed",
-      date: "2024-01-11"
+  const fetchUnpaidOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          services(name, description)
+        `)
+        .eq("customer_id", user?.id)
+        .eq("payment_status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setUnpaidOrders(data || []);
+    } catch (error) {
+      console.error("Error fetching unpaid orders:", error);
     }
-  ];
+  };
 
-  const getStatusBadge = (status: string) => {
+  const fetchPaymentHistory = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("payments")
+        .select(`
+          *,
+          orders(order_number, services(name))
+        `)
+        .eq("orders.customer_id", user?.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPaymentHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching payment history:", error);
+    }
+  };
+
+  const handlePayment = async (orderId: string, paymentMethod: string) => {
+    setLoading(true);
+    try {
+      const order = unpaidOrders.find(o => o.id === orderId);
+      if (!order) throw new Error("Order not found");
+
+      // Create payment record
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          order_id: orderId,
+          amount: order.total_amount,
+          payment_method: paymentMethod,
+          payment_status: paymentMethod === 'cod' ? 'pending' : 'paid',
+          transaction_id: `TXN-${Date.now()}`,
+          payment_date: paymentMethod === 'cod' ? null : new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      // Update order payment status
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          payment_method: paymentMethod,
+          payment_status: paymentMethod === 'cod' ? 'pending' : 'paid'
+        })
+        .eq("id", orderId);
+
+      if (orderError) throw orderError;
+
+      toast({
+        title: "Payment Processed",
+        description: paymentMethod === 'cod' 
+          ? "COD payment scheduled. Pay when courier arrives."
+          : "Payment successful! Your order will be processed soon."
+      });
+
+      // Refresh data
+      fetchUnpaidOrders();
+      fetchPaymentHistory();
+
+    } catch (error: any) {
+      console.error("Error processing payment:", error);
+      toast({
+        title: "Payment Failed",
+        description: error.message || "Failed to process payment",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPaymentStatusBadge = (status: string) => {
     const statusMap = {
-      completed: { variant: "default" as const, label: "Selesai", icon: CheckCircle },
-      pending: { variant: "secondary" as const, label: "Menunggu", icon: Clock },
-      failed: { variant: "destructive" as const, label: "Gagal", icon: AlertCircle }
+      pending: { variant: "secondary" as const, icon: Clock, text: "Pending" },
+      paid: { variant: "default" as const, icon: CheckCircle, text: "Paid" },
+      failed: { variant: "destructive" as const, icon: AlertCircle, text: "Failed" },
+      refunded: { variant: "outline" as const, icon: AlertCircle, text: "Refunded" }
     };
-    
-    const statusInfo = statusMap[status as keyof typeof statusMap];
-    if (!statusInfo) return null;
-    
-    const Icon = statusInfo.icon;
-    
+
+    const config = statusMap[status as keyof typeof statusMap] || statusMap.pending;
+    const IconComponent = config.icon;
+
     return (
-      <Badge variant={statusInfo.variant} className="flex items-center space-x-1">
-        <Icon className="h-3 w-3" />
-        <span>{statusInfo.label}</span>
+      <Badge variant={config.variant} className="flex items-center gap-1">
+        <IconComponent className="h-3 w-3" />
+        {config.text}
       </Badge>
     );
   };
 
+  const getPaymentMethodIcon = (method: string) => {
+    const iconMap = {
+      cod: Banknote,
+      bank_transfer: CreditCard,
+      credit_card: CreditCard,
+      digital_wallet: Smartphone
+    };
+    return iconMap[method as keyof typeof iconMap] || CreditCard;
+  };
+
+  const getPaymentMethodText = (method: string) => {
+    const textMap = {
+      cod: "Cash on Delivery",
+      bank_transfer: "Bank Transfer",
+      credit_card: "Credit Card",
+      digital_wallet: "Digital Wallet"
+    };
+    return textMap[method as keyof typeof textMap] || method;
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900">Sistem Pembayaran</h2>
-          <p className="text-gray-600">Kelola metode pembayaran dan transaksi</p>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold">Payment System</h2>
+        <p className="text-gray-600">Kelola pembayaran order laundry Anda</p>
       </div>
 
-      <Tabs defaultValue="methods" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-white/50">
-          <TabsTrigger value="methods">Metode Pembayaran</TabsTrigger>
-          <TabsTrigger value="transactions">Transaksi</TabsTrigger>
-          <TabsTrigger value="reports">Laporan</TabsTrigger>
+      <Tabs defaultValue="unpaid" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="unpaid">Unpaid Orders ({unpaidOrders.length})</TabsTrigger>
+          <TabsTrigger value="history">Payment History</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="methods" className="space-y-6">
-          {/* Payment Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Total Hari Ini</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">Rp 1,245,000</div>
-                <p className="text-xs text-green-100">+12% dari kemarin</p>
+        <TabsContent value="unpaid" className="space-y-4">
+          {unpaidOrders.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                  <h3 className="font-medium text-gray-900 mb-2">All Payments Up to Date</h3>
+                  <p className="text-gray-600">Semua order sudah dibayar</p>
+                </div>
               </CardContent>
             </Card>
-            
-            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Transaksi Selesai</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">23</div>
-                <p className="text-xs text-blue-100">dari 25 transaksi</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Menunggu Bayar</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">2</div>
-                <p className="text-xs text-orange-100">perlu follow up</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Rata-rata</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">Rp 54,130</div>
-                <p className="text-xs text-purple-100">per transaksi</p>
-              </CardContent>
-            </Card>
-          </div>
+          ) : (
+            <div className="grid gap-4">
+              {unpaidOrders.map((order) => (
+                <Card key={order.id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{order.order_number}</CardTitle>
+                        <CardDescription>{order.services?.name}</CardDescription>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-green-600">
+                          Rp {order.total_amount?.toLocaleString('id-ID')}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {new Date(order.created_at).toLocaleDateString('id-ID')}
+                        </p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-600">Pilih metode pembayaran:</p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* COD */}
+                        <Button
+                          variant="outline"
+                          className="h-auto p-4 justify-start"
+                          onClick={() => handlePayment(order.id, 'cod')}
+                          disabled={loading}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <Banknote className="h-6 w-6 text-green-600" />
+                            <div className="text-left">
+                              <p className="font-medium">Cash on Delivery</p>
+                              <p className="text-xs text-gray-500">Bayar saat sepatu diantar</p>
+                            </div>
+                          </div>
+                        </Button>
 
-          {/* Payment Methods */}
-          <Card className="bg-white/70 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle>Metode Pembayaran Tersedia</CardTitle>
-              <CardDescription>Pilih metode pembayaran yang ingin diaktifkan</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {paymentMethods.map((method) => {
-                  const Icon = method.icon;
-                  return (
-                    <div
-                      key={method.id}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                        method.available
-                          ? selectedPayment === method.id
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                          : 'border-gray-100 bg-gray-50 opacity-60'
-                      }`}
-                      onClick={() => method.available && setSelectedPayment(method.id)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className={`p-2 rounded-lg ${
-                            method.available ? 'bg-blue-100' : 'bg-gray-100'
-                          }`}>
-                            <Icon className={`h-5 w-5 ${
-                              method.available ? 'text-blue-600' : 'text-gray-400'
-                            }`} />
+                        {/* Bank Transfer */}
+                        <Button
+                          variant="outline"
+                          className="h-auto p-4 justify-start"
+                          onClick={() => handlePayment(order.id, 'bank_transfer')}
+                          disabled={loading}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <CreditCard className="h-6 w-6 text-blue-600" />
+                            <div className="text-left">
+                              <p className="font-medium">Bank Transfer</p>
+                              <p className="text-xs text-gray-500">Transfer ke rekening kami</p>
+                            </div>
+                          </div>
+                        </Button>
+
+                        {/* Digital Wallet */}
+                        <Button
+                          variant="outline"
+                          className="h-auto p-4 justify-start"
+                          onClick={() => handlePayment(order.id, 'digital_wallet')}
+                          disabled={loading}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <Smartphone className="h-6 w-6 text-purple-600" />
+                            <div className="text-left">
+                              <p className="font-medium">Digital Wallet</p>
+                              <p className="text-xs text-gray-500">OVO, GoPay, DANA</p>
+                            </div>
+                          </div>
+                        </Button>
+
+                        {/* Credit Card */}
+                        <Button
+                          variant="outline"
+                          className="h-auto p-4 justify-start"
+                          onClick={() => handlePayment(order.id, 'credit_card')}
+                          disabled={loading}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <CreditCard className="h-6 w-6 text-red-600" />
+                            <div className="text-left">
+                              <p className="font-medium">Credit Card</p>
+                              <p className="text-xs text-gray-500">Visa, Mastercard</p>
+                            </div>
+                          </div>
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          {paymentHistory.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="font-medium text-gray-900 mb-2">No Payment History</h3>
+                  <p className="text-gray-600">Belum ada riwayat pembayaran</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {paymentHistory.map((payment) => {
+                const PaymentIcon = getPaymentMethodIcon(payment.payment_method);
+                return (
+                  <Card key={payment.id}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="bg-gray-100 p-3 rounded-lg">
+                            <PaymentIcon className="h-6 w-6 text-gray-600" />
                           </div>
                           <div>
-                            <h4 className="font-medium">{method.name}</h4>
-                            <p className="text-sm text-gray-600">{method.description}</p>
-                            {method.fee !== 0 && (
-                              <p className="text-xs text-orange-600">
-                                Biaya admin: {typeof method.fee === 'number' ? `Rp ${method.fee.toLocaleString()}` : method.fee}
-                              </p>
-                            )}
+                            <p className="font-medium">{payment.orders?.order_number}</p>
+                            <p className="text-sm text-gray-600">{payment.orders?.services?.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {payment.payment_date 
+                                ? new Date(payment.payment_date).toLocaleDateString('id-ID')
+                                : 'Pending'
+                              }
+                            </p>
                           </div>
                         </div>
-                        <Badge variant={method.available ? "default" : "secondary"}>
-                          {method.available ? "Aktif" : "Segera"}
-                        </Badge>
+                        <div className="text-right space-y-1">
+                          <p className="font-medium">Rp {payment.amount?.toLocaleString('id-ID')}</p>
+                          <div className="flex items-center space-x-2">
+                            {getPaymentStatusBadge(payment.payment_status)}
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {getPaymentMethodText(payment.payment_method)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-              
-              {selectedPayment && (
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-medium text-blue-900 mb-2">Konfigurasi Pembayaran</h4>
-                  <div className="space-y-2">
-                    {selectedPayment === "transfer" && (
-                      <div>
-                        <p className="text-sm text-blue-800">Rekening Bank:</p>
-                        <p className="text-sm text-blue-700">BCA: 1234567890 a.n CleanStride</p>
-                        <p className="text-sm text-blue-700">Mandiri: 0987654321 a.n CleanStride</p>
-                      </div>
-                    )}
-                    {selectedPayment === "ewallet" && (
-                      <div>
-                        <p className="text-sm text-blue-800">E-Wallet yang didukung:</p>
-                        <p className="text-sm text-blue-700">GoPay, OVO, DANA, LinkAja</p>
-                        <p className="text-sm text-blue-700">Biaya admin Rp 2,500 per transaksi</p>
-                      </div>
-                    )}
-                    {selectedPayment === "cod" && (
-                      <div>
-                        <p className="text-sm text-blue-800">Cash on Delivery:</p>
-                        <p className="text-sm text-blue-700">Customer bayar tunai saat sepatu diantar</p>
-                        <p className="text-sm text-blue-700">Tidak ada biaya tambahan</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="transactions" className="space-y-6">
-          <Card className="bg-white/70 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle>Transaksi Terbaru</CardTitle>
-              <CardDescription>Daftar transaksi pembayaran hari ini</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentTransactions.map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-green-100 p-2 rounded-lg">
-                        <DollarSign className="h-4 w-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{transaction.id}</p>
-                        <p className="text-sm text-gray-600">{transaction.customer} • {transaction.orderId}</p>
-                        <p className="text-xs text-gray-500">{transaction.date}</p>
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-bold text-green-600">Rp {transaction.amount.toLocaleString()}</p>
-                      <p className="text-sm text-gray-600">{transaction.method}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusBadge(transaction.status)}
-                      <Button variant="ghost" size="sm">Detail</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="reports" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="bg-white/70 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="h-5 w-5 mr-2" />
-                  Metode Pembayaran Populer
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Transfer Bank</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-24 bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{width: '60%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">60%</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">COD</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-24 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-600 h-2 rounded-full" style={{width: '25%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">25%</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">E-Wallet</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-24 bg-gray-200 rounded-full h-2">
-                        <div className="bg-purple-600 h-2 rounded-full" style={{width: '15%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">15%</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/70 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle>Ringkasan Mingguan</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <p className="text-2xl font-bold text-green-600">Rp 8.7M</p>
-                    <p className="text-sm text-green-700">Total Pendapatan</p>
-                  </div>
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <p className="text-2xl font-bold text-blue-600">156</p>
-                    <p className="text-sm text-blue-700">Total Transaksi</p>
-                  </div>
-                </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <p className="text-lg font-bold text-orange-600">Rp 55,769</p>
-                  <p className="text-sm text-orange-700">Rata-rata per Transaksi</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
